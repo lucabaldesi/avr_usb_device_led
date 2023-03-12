@@ -8,12 +8,19 @@
 
 #define USB_LED_OFF 0
 #define USB_LED_ON  1
+#define USB_DATA_OUT 2
+#define USB_DATA_IN 3
 #define abs(x) ((x) > 0 ? (x) : (-x))
 #define LED_PIN (1<<PB3)
 
 
+static uchar replyBuf[16] = "Hello, USB!";
+static uchar dataLength, dataReceived;
+
+
 USB_PUBLIC uchar usbFunctionSetup(uchar data[8]) {
     usbRequest_t *rq = (void *)data;
+    uchar reply_size = 0;
 
     switch(rq->bRequest) { // custom command is in the bRequest field
         case USB_LED_ON:
@@ -22,9 +29,30 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8]) {
         case USB_LED_OFF:
             PORTB &= ~LED_PIN;
             break;
+        case USB_DATA_OUT: // send data to PC
+            usbMsgPtr = (short unsigned int) replyBuf;
+            reply_size = sizeof(replyBuf);
+            // usbFunctionRead() will be called by V-USB with usbMsgPtr
+            break;
+        case USB_DATA_IN: // receive data from PC
+            dataLength = (uchar)rq->wLength.word;
+            dataLength = (dataLength > sizeof(replyBuf))?sizeof(replyBuf):dataLength;
+            dataReceived = 0;
+            reply_size = USB_NO_MSG; // usbFunctionWrite() will be called by V-USB
+            break;
     }
 
-    return 0;
+    return reply_size;
+}
+
+
+USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len) {
+    uchar i;
+
+    for(i = 0; dataReceived < dataLength && i < len; i++, dataReceived++)
+        replyBuf[dataReceived] = data[i];
+
+    return (dataReceived == dataLength); // 1 if we received it all, 0 if not
 }
 
 
